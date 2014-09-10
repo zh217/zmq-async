@@ -204,18 +204,27 @@ Puts message of interest on queue and then sends a sentinel value over zmq-contr
   "Runnable fn with blocking loop on channels.
 Controlled by messages sent over provided `async-control-chan`.
 Sends messages to complementary `zmq-looper` via provided `zmq-control-sock` (assumed to be connected)."
-  [queue async-control-chan zmq-control-sock]
+  [queue async-control-chan register-chan zmq-control-sock]
   (fn []
     ;; Pairings is a map of string id to {:out chan :in chan} map, where existence of :out and :in depend on the type of ZeroMQ socket.
     (loop [pairings {}]
       (reset! open-c-count (count pairings))
       (swap! alt-ready inc)
-      (let [[val c] (alts!! (cons async-control-chan (shuffle (remove nil? (map :in (vals pairings))))) :priority true) ;; block alts
+      (let [[val c] (alts!! (cons async-control-chan
+                                  (cons register-chan
+                                        (shuffle (remove nil? (map :in (vals pairings)))))) :priority true) ;; block alts
             _ (swap! alt-done inc)
-            id (if (identical? c async-control-chan)
+            id (cond
+                 (identical? c async-control-chan)
                  (do
                    (swap! ac-take-done inc)
                    :control)
+
+                 (identical? c register-chan)
+                 (do
+                   :register)
+
+                 :else
                  (sock-id-for-chan c pairings))]
 
         (match [id val]
@@ -223,7 +232,7 @@ Sends messages to complementary `zmq-looper` via provided `zmq-control-sock` (as
                ;;Control messages
 
                ;;Register a new socket.
-               [:control [:register sock chanmap]]
+               [:register [:register sock chanmap]]
                (let [sock-id (str (gensym "zmq-"))]
                  (command-zmq-thread! zmq-control-sock queue [:register sock-id sock]) ;; block put-queue
                  (recur (assoc pairings sock-id chanmap)))
@@ -295,6 +304,7 @@ Sends messages to complementary `zmq-looper` via provided `zmq-control-sock` (as
          queue (LinkedBlockingQueue. 8)
 
          async-control-chan (chan 1)
+         register-chan (chan 1)
 
          zmq-thread (doto (Thread. (zmq-looper queue sock-server async-control-chan))
                       (.setName (str "ZeroMQ looper " "[" (or name addr) "]"))
@@ -309,6 +319,7 @@ Sends messages to complementary `zmq-looper` via provided `zmq-control-sock` (as
       :sock-client        sock-client
       :queue              queue
       :async-control-chan async-control-chan
+      :register-chan      register-chan
       :zmq-thread         zmq-thread
       :async-thread       async-thread
       :shutdown           #(close! async-control-chan)})))
@@ -375,7 +386,7 @@ Accepts a map with the following keys:
                                         configurator))]
 
     (swap! ac-put inc)
-    (>!! (:async-control-chan context)
+    (>!! (:register-chan context)
          [:register socket {:in in :out out}])
     (swap! ac-put-done inc)))
 
