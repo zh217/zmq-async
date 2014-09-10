@@ -309,7 +309,7 @@ Sends messages to complementary `zmq-looper` via provided `zmq-control-sock` (as
          zmq-thread (doto (Thread. (zmq-looper queue sock-server async-control-chan))
                       (.setName (str "ZeroMQ looper " "[" (or name addr) "]"))
                       (.setDaemon true))
-         async-thread (doto (Thread. (async-looper queue async-control-chan sock-client))
+         async-thread (doto (Thread. (async-looper queue async-control-chan register-chan sock-client))
                         (.setName (str "core.async looper" "[" (or name addr) "]"))
                         (.setDaemon true))]
 
