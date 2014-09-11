@@ -7,14 +7,14 @@
 
             :global-vars {*warn-on-reflection* true}
 
-            :dependencies [[org.clojure/clojure "1.5.1"]
+            :dependencies [[org.clojure/clojure "1.6.0"]
                            [com.keminglabs/jzmq "a6c1706"]
                            [com.keminglabs/jzmq-osx64 "a6c1706"]
                            [com.keminglabs/jzmq-linux64 "a6c1706"]
-                           [com.taoensso/timbre "3.3.0"]
+                           [com.taoensso/timbre "3.3.1"]
 
-                           [org.clojure/core.match "0.2.0"]
+                           [org.clojure/core.match "0.2.2"]
                            [org.clojure/core.async "0.1.242.0-44b1e3-alpha"]]
 
             :profiles {:dev {:source-paths ["dev"]
-                             :dependencies [[midje "1.5.1"]]}})
+                             :dependencies [[midje "1.6.3"]]}})
