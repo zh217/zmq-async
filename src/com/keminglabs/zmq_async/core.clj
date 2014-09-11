@@ -5,7 +5,7 @@
             [clojure.set :refer [subset?]]
             [clojure.edn :refer [read-string]]
             [clojure.set :refer [map-invert]]
-            [taoensso.timbre])
+            [taoensso.timbre :refer [info]])
   (:import java.util.concurrent.LinkedBlockingQueue
            (org.zeromq ZMQ ZContext ZMQ$Socket ZMQ$Poller)))
 
@@ -28,7 +28,10 @@
   (let [msg (if (coll? msg) msg [msg])]
     (loop [[head & tail] msg]
       ;;TODO: handle byte buffers.
-      (let [res (.send sock head (if tail (bit-or ZMQ/NOBLOCK ZMQ/SNDMORE) ZMQ/NOBLOCK))]
+      (let [mask (int (if tail (bit-or ZMQ/NOBLOCK ZMQ/SNDMORE) ZMQ/NOBLOCK))
+            res (if (string? head)
+                  (.send ^ZMQ$Socket sock ^String head mask)
+                  (.send ^ZMQ$Socket sock ^bytes head mask))]
         (cond
           (= false res) (println "WARNING: Message not sent on" sock)
           tail (recur tail))))))
@@ -92,7 +95,7 @@ If multiple sockets are ready, one is chosen to be read from nondeterministicall
   ;;TODO: what's the perf cost of creating a new poller all the time?
   (let [n (count socks)
         poller (ZMQ$Poller. n)]
-    (doseq [s socks]
+    (doseq [^ZMQ$Socket s socks]
       (.register poller s ZMQ$Poller/POLLIN))
     (.poll poller)
 
@@ -107,8 +110,8 @@ If multiple sockets are ready, one is chosen to be read from nondeterministicall
   [zmq-control-sock socks]
   (let [n (inc (count socks))
         poller (ZMQ$Poller. n)]
-    (.register poller zmq-control-sock ZMQ$Poller/POLLIN)
-    (doseq [s socks]
+    (.register poller ^ZMQ$Socket zmq-control-sock ZMQ$Poller/POLLIN)
+    (doseq [^ZMQ$Socket s socks]
       (.register poller s ZMQ$Poller/POLLIN))
     (swap! poll-ready inc)
     (.poll poller)
@@ -124,7 +127,7 @@ If multiple sockets are ready, one is chosen to be read from nondeterministicall
   "Runnable fn with blocking loop on zmq sockets.
 Opens/closes zmq sockets according to messages received on `zmq-control-sock`.
 Relays messages from zmq sockets to `async-control-chan`."
-  [queue zmq-control-sock async-control-chan]
+  [^LinkedBlockingQueue queue zmq-control-sock async-control-chan]
   (fn []
     ;;Socks is a map of string socket-ids to ZeroMQ socket objects.
     (loop [socks {}]
@@ -134,7 +137,8 @@ Relays messages from zmq sockets to `async-control-chan`."
                  :control
                  (get (map-invert socks) sock))
                                                                           ;;Hack coercion  so we can have a pattern match against message from control socket
-            val (if (= :control id) (keyword (String. val)) val)]
+            val (if (= :control id) (keyword (if (string? val) val
+                                                               (String. ^bytes val))) val)]
 
         (assert (not (nil? id)))
 
@@ -152,7 +156,7 @@ Relays messages from zmq sockets to `async-control-chan`."
 
                         [[:close sock-id]]
                         (do
-                          (.close (socks sock-id))          ;; blcok close socket (??)
+                          (.close ^ZMQ$Socket (socks sock-id)) ;; blcok close socket (??)
                           (recur (dissoc socks sock-id)))
 
                         ;;Send a message out
@@ -162,7 +166,7 @@ Relays messages from zmq sockets to `async-control-chan`."
                           (recur socks))))
 
                [:control :shutdown]
-               (doseq [[_ sock] socks]
+               (doseq [[_ ^ZMQ$Socket sock] socks]
                  (.close sock))
 
                [:control msg]
@@ -186,7 +190,7 @@ Relays messages from zmq sockets to `async-control-chan`."
 (defn command-zmq-thread!
   "Helper used by the core.async thread to relay a command to the ZeroMQ thread.
 Puts message of interest on queue and then sends a sentinel value over zmq-control-sock so that ZeroMQ thread unblocks."
-  [zmq-control-sock queue msg]
+  [zmq-control-sock ^LinkedBlockingQueue queue msg]
   (swap! q-put inc)
   (.put queue msg)
   (swap! q-put-done inc)
@@ -204,7 +208,7 @@ Puts message of interest on queue and then sends a sentinel value over zmq-contr
   "Runnable fn with blocking loop on channels.
 Controlled by messages sent over provided `async-control-chan`.
 Sends messages to complementary `zmq-looper` via provided `zmq-control-sock` (assumed to be connected)."
-  [queue async-control-chan register-chan zmq-control-sock]
+  [^LinkedBlockingQueue queue async-control-chan register-chan zmq-control-sock]
   (fn []
     ;; Pairings is a map of string id to {:out chan :in chan} map, where existence of :out and :in depend on the type of ZeroMQ socket.
     (loop [pairings {}]
@@ -306,10 +310,10 @@ Sends messages to complementary `zmq-looper` via provided `zmq-control-sock` (as
          async-control-chan (chan 1)
          register-chan (chan 1)
 
-         zmq-thread (doto (Thread. (zmq-looper queue sock-server async-control-chan))
+         zmq-thread (doto (Thread. ^Runnable (zmq-looper queue sock-server async-control-chan))
                       (.setName (str "ZeroMQ looper " "[" (or name addr) "]"))
                       (.setDaemon true))
-         async-thread (doto (Thread. (async-looper queue async-control-chan register-chan sock-client))
+         async-thread (doto (Thread. ^Runnable (async-looper queue async-control-chan register-chan sock-client))
                         (.setName (str "core.async looper" "[" (or name addr) "]"))
                         (.setDaemon true))]
 
@@ -328,8 +332,8 @@ Sends messages to complementary `zmq-looper` via provided `zmq-control-sock` (as
   "Initializes a zmq-async context by binding/connecting both ends of the ZeroMQ control socket and starting both threads.
 Does nothing if zmq-thread is already started."
   [context]
-  (let [{:keys [addr sock-server sock-client
-                zmq-thread async-thread]} context]
+  (let [{:keys [addr ^ZMQ$Socket sock-server ^ZMQ$Socket sock-client
+                ^Thread zmq-thread ^Thread async-thread]} context]
     (when-not (.isAlive zmq-thread)
       (.bind sock-server addr)
       (.start zmq-thread)
@@ -368,7 +372,7 @@ Accepts a map with the following keys:
 
   (let [context (or context (doto automagic-context
                               (initialize!)))
-        ^ZMQ$Socket socket (or socket (doto (.createSocket (context :zcontext)
+        ^ZMQ$Socket socket (or socket (doto (.createSocket ^ZContext (context :zcontext)
                                                            (case socket-type
                                                              :pair ZMQ/PAIR
                                                              :pub ZMQ/PUB
