@@ -11,6 +11,10 @@
 
 (taoensso.timbre/refer-timbre)
 
+(defn close-and-flush [c]
+  (close! c)
+  (clojure.core.async/reduce (fn [_ _] nil) [] c))
+
 ;;Some terminology:
 ;;
 ;; sock: ZeroMQ socket object
@@ -202,7 +206,7 @@ Puts message of interest on queue and then sends a sentinel value over zmq-contr
   (command-zmq-thread! zmq-control-sock queue
                        [:close sock-id])
   (doseq [[_ c] chanmap]
-    (when c (close! c))))
+    (when c (close-and-flush c))))
 
 (defn async-looper
   "Runnable fn with blocking loop on channels.
@@ -326,7 +330,7 @@ Sends messages to complementary `zmq-looper` via provided `zmq-control-sock` (as
       :register-chan      register-chan
       :zmq-thread         zmq-thread
       :async-thread       async-thread
-      :shutdown           #(close! async-control-chan)})))
+      :shutdown           #(close-and-flush async-control-chan)})))
 
 (defn initialize!
   "Initializes a zmq-async context by binding/connecting both ends of the ZeroMQ control socket and starting both threads.
