@@ -12,6 +12,10 @@ Main differences:
   The reason: core.async changes too fast, and you may want to build your own jzmq, or even use jeromq.
 * Logging has been added, so that debugging is hopefully less painful. To see the logging, set timbre logging level to `:trace` or below
 
+Available on clojars:
+
+[![Clojars Project](http://clojars.org/zh217/zmq-async/latest-version.svg)](http://clojars.org/zh217/zmq-async)
+
 The original README is reproduced below
 
 # ZeroMQ Async
