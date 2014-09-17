@@ -1,4 +1,4 @@
-(defproject zh217/zmq-async "0.1.1"
+(defproject zh217/zmq-async "0.1.2"
             :description "A fork of zmq-async, a ZeroMQ 3 library for Clojure"
             :url "https://github.com/zh217/zmq-async"
             :license {:name "BSD" :url "http://www.opensource.org/licenses/BSD-3-Clause"}
