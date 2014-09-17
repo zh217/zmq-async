@@ -1,3 +1,19 @@
+# zmq-async fork
+
+This is a fork of the zmq-async library, forked from https://github.com/lynaghk/zmq-async
+
+Main differences:
+
+* Many deadlocks have been resolved
+  * deadlocks relating to sloppy usage of `async-control-chan`
+  * deadlocks relating to `close!` (do you know that closing a channel does not unblock pending puts already on it?)
+* All reflective calls in the main namespace have been eliminated
+* explicit dependencies on jzmq, core.async and clojure have been removed (so you need to add it in your own application).
+  The reason: core.async changes too fast, and you may want to build your own jzmq, or even use jeromq.
+* Logging has been added, so that debugging is hopefully less painful. To see the logging, set timbre logging level to `:trace` or below
+
+The original README is reproduced below
+
 # ZeroMQ Async
 
 ZeroMQ is a message-oriented socket system that supports many communication styles (request/reply, publish/subscribe, fan-out, &c.) on top of many transport layers with bindings to many languages.

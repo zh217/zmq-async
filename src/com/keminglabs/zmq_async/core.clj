@@ -5,11 +5,9 @@
             [clojure.set :refer [subset?]]
             [clojure.edn :refer [read-string]]
             [clojure.set :refer [map-invert]]
-            [taoensso.timbre :refer [info]])
+            [taoensso.timbre :refer [trace]])
   (:import java.util.concurrent.LinkedBlockingQueue
            (org.zeromq ZMQ ZContext ZMQ$Socket ZMQ$Poller)))
-
-(taoensso.timbre/refer-timbre)
 
 (defn close-and-flush [c]
   (close! c)
@@ -88,27 +86,16 @@ If the socket does not contain a multipart message, returns a plain byte array."
     (go
       (loop []
         (<! (timeout 60000))
-        (report (mapv deref
-                      [open-c-count open-s-count poll-ready poll-done alt-ready alt-done ac-put ac-put-done ac-take-done q-put q-put-done q-take q-take-done out-take out-take-done]))
+        (trace
+          {:#chans  @open-c-count
+           :#socks  @open-s-count
+           :poll    [@poll-ready @poll-done]
+           :alt!!   [@alt-ready @alt-done]
+           :ctl>!!  [@ac-put @ac-put-done @ac-take-done]
+           :enqueue [@q-put @q-put-done]
+           :dequeue [@q-take @q-take-done]
+           :out>!!  [@out-take @out-take-done]})
         (recur)))))
-
-(defn poll
-  "Blocking poll that returns a [val, socket] tuple.
-If multiple sockets are ready, one is chosen to be read from nondeterministically."
-  [socks]
-  ;;TODO: what's the perf cost of creating a new poller all the time?
-  (let [n (count socks)
-        poller (ZMQ$Poller. n)]
-    (doseq [^ZMQ$Socket s socks]
-      (.register poller s ZMQ$Poller/POLLIN))
-    (.poll poller)
-
-    ;;Randomly take the first ready socket and its message, to match core.async's alts! behavior
-    (->> (shuffle (range n))
-         (filter #(.pollin poller %))
-         first
-         (.getSocket poller)
-         ((juxt receive-all identity)))))
 
 (defn poll-with-priority
   [zmq-control-sock socks]
