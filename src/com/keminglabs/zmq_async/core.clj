@@ -326,11 +326,13 @@ Does nothing if zmq-thread is already started."
   (let [{:keys [addr ^ZMQ$Socket sock-server ^ZMQ$Socket sock-client
                 ^Thread zmq-thread ^Thread async-thread]} context]
     (when-not (.isAlive zmq-thread)
-      (.bind sock-server addr)
-      (.start zmq-thread)
+      (locking zmq-thread
+        (when-not (.isAlive zmq-thread)
+          (.bind sock-server addr)
+          (.start zmq-thread)
 
-      (.connect sock-client addr)
-      (.start async-thread)))
+          (.connect sock-client addr)
+          (.start async-thread)))))
   nil)
 
 (def ^:private automagic-context
